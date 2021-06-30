@@ -1,3 +1,4 @@
+using JLD2
 using Flux: loadparams!
 using Requires
 
@@ -27,4 +28,17 @@ readckpt(path) = error("readckpt require TensorFlow.jl installed. run `Pkg.add(\
 
         weights
     end
+end
+
+"""     ckpt2_to_jld2(ckptpath::String, ckptname::String, savepath::String)
+Loads the pre-trained model weights from a tensorflow checkpoint and saves to JLD2
+"""
+function ckpt_to_jld2(ckptpath::String, ckptname::String; savepath::String="./")
+    files = readdir(ckptpath)
+    ckptname ∉ files && error("The checkpoint file $ckptname is not found")
+    ckptname*".meta" ∉ files && error("The checkpoint meta file is not found")
+    weights = readckpt(joinpath(ckptpath, ckptname))
+    jld2name = normpath(joinpath(savepath, ckptname[1:end-5]*".jld2"))
+    @info "Saving the model weights to $jld2name"
+    JLD2.@save jld2name weights
 end
