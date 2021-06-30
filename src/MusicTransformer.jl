@@ -1,5 +1,5 @@
 module MusicTransformer
 
-# Write your package code here.
+include("pretrain.jl")
 
 end
