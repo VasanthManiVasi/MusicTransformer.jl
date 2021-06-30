@@ -15,6 +15,9 @@ readckpt(path) = error("readckpt require TensorFlow.jl installed. run `Pkg.add(\
         shapes = ckpt.get_variable_to_shape_map()
 
         for (name, shape) ∈ shapes
+            # Ignore training related data - e.g. learning rates
+            # Also ignore scalars and other variables that aren't stored correctly in the checkpoint (shape == Any[])
+            (occursin("training", name) || shape == Any[]) && continue
             weight = ckpt.get_tensor(name)
             if length(shape) == 2
                 weight = collect(weight')
