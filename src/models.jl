@@ -21,7 +21,7 @@ end
 function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers::Int)
     BaselineMusicTransformer(
         Stack(
-            @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers"),
+            @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers => logits"),
             Embed(size, 310),
             PositionEmbedding(size, 2048),
             (e, pe) -> (e .+ pe),
@@ -29,6 +29,7 @@ function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers
                 Transformer(size, head, hs, ps; future=false, pdrop=0)
                 for i = 1:layers
             ]...,
+            Dense(size, 310),
         )
     )
 end
@@ -37,7 +38,7 @@ function Base.show(io::IO, mt::BaselineMusicTransformer)
     layer_1 = 3 + 1 # index of layer 1 is after the first 3 embedding layers
     hs = div(size(mt.ts[layer_1].mh.iqproj.W)[1], mt.ts[layer_1].mh.head)
     h, ps = size(mt.ts[layer_1].pw.dout.W)
-    num_layers = length(mt.ts) - 3 # Ignore embedding
+    num_layers = length(mt.ts) - 3 - 1 # Ignore embedding and output layers
     print(io, "BaselineMusicTransformer(")
     print(io, "layers=$num_layers, ")
     print(io, "head=$(mt.ts[layer_1].mh.head), ")

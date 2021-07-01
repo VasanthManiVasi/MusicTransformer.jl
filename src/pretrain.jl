@@ -96,5 +96,12 @@ function load_pretrained_musictransformer(weights)
     # Load embedding
     embedding = weights["transformer/symbol_modality_310_512/shared/weights_0"]
     loadparams!(mt.ts[1], [embedding])
+
+    # This pre-trained Music Transformer shares embedding and softmax weights
+    # Base.lastindex is not defined on Stack, manually write the last index for now
+    # 3 embedding layers, 16 transformer body blocks, + 1 is the last embedding layer
+    last_layer = 3 + 16 + 1
+    loadparams!(mt.ts[last_layer].W, [embedding'])
+
     mt
 end
