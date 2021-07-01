@@ -42,3 +42,59 @@ function ckpt_to_jld2(ckptpath::String, ckptname::String; savepath::String="./")
     @info "Saving the model weights to $jld2name"
     JLD2.@save jld2name weights
 end
+
+function load_pretrained_musictransformer(weights)
+    # All values are hardcoded for now since only one pre-trained model is available
+    mt = BaselineMusicTransformer(512, 8, 2048, 16)
+
+    layers = keys(weights)
+
+    for i = 1:16
+        # Get all layers in a block
+        block = filter(l->occursin("layer_$(i-1)/", l), layers)
+        # Index of the block in Transformer body  - after embedding, position embedding and e .+ pe layers
+        block_index = i + 3
+        for k ∈ block
+            if occursin("self_attention", k)
+                if occursin("q/kernel", k)
+                    loadparams!(mt[block_index].mh.iqproj.W, [weights[k]])
+                elseif occursin("k/kernel", k)
+                    loadparams!(mt[block_index].mh.ikproj.W, [weights[k]])
+                elseif occursin("v/kernel", k)
+                    loadparams!(mt[block_index].mh.ivproj.W, [weights[k]])
+                elseif occursin("output_transform/kernel", k)
+                    loadparams!(mt[block_index].mh.oproj.W, [weights[k]])
+                elseif occursin("layer_norm_scale", k)
+                    loadparams!(mt[block_index].mhn.diag.α, [weights[k]])
+                elseif occursin("layer_norm_bias", k)
+                    loadparams!(mt[block_index].mhn.diag.β, [weights[k]])
+                else
+                    @warn "Unknown variable: $k"
+                end
+            elseif occursin("ffn", k)
+                if occursin("conv1/kernel", k)
+                    loadparams!(mt[block_index].pw.din.W, [weights[k]])
+                elseif occursin("conv1/bias", k)
+                    loadparams!(mt[block_index].pw.din.b, [weights[k]])
+                elseif occursin("conv2/kernel", k)
+                    loadparams!(mt[block_index].pw.dout.W, [weights[k]])
+                elseif occursin("conv2/bias", k)
+                    loadparams!(mt[block_index].pw.dout.b, [weights[k]])
+                elseif occursin("layer_norm_scale", k)
+                    loadparams!(mt[block_index].pwn.diag.α, [weights[k]])
+                elseif occursin("layer_norm_bias", k)
+                    loadparams!(mt[block_index].pwn.diag.β, [weights[k]])
+                else
+                    @warn "Unknown variable: $k"
+                end
+            else
+                @warn "Unknown variable: $k"
+            end
+        end
+    end
+
+    # Load embedding
+    embedding = weights["transformer/symbol_modality_310_512/shared/weights_0"]
+    loadparams!(mt.ts[1], [embedding])
+    mt
+end
