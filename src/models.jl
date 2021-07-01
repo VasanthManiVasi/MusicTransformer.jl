@@ -32,3 +32,16 @@ function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers
         )
     )
 end
+
+function Base.show(io::IO, mt::BaselineMusicTransformer)
+    layer_1 = 3 + 1 # index of layer 1 is after the first 3 embedding layers
+    hs = div(size(mt.ts[layer_1].mh.iqproj.W)[1], mt.ts[layer_1].mh.head)
+    h, ps = size(mt.ts[layer_1].pw.dout.W)
+    num_layers = length(mt.ts) - 3 # Ignore embedding
+    print(io, "BaselineMusicTransformer(")
+    print(io, "layers=$num_layers, ")
+    print(io, "head=$(mt.ts[layer_1].mh.head), ")
+    print(io, "head_size=$(hs), ")
+    print(io, "pwffn_size=$(ps), ")
+    print(io, "size=$(h))")
+end
