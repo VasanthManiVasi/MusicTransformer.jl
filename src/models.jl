@@ -5,6 +5,9 @@ using Transformers.Basic
 using Transformers.Basic: AbstractTransformer
 using Transformers.Stacks
 
+using NoteSequences
+using StatsBase: wsample
+
 struct BaselineMusicTransformer{T<:Stack} <: AbstractTransformer
     ts::T
 end
@@ -36,6 +39,43 @@ end
 
 function (mt::BaselineMusicTransformer)(embeds::T) where T
     mt.ts(embeds)
+end
+
+function generate(model::MT;
+    primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
+    raw = false)
+
+    performance = Performance(100, velocity_bins = 32)
+    MIN_PITCH = 21
+    MAX_PITCH = 108
+    performance.event_ranges = [
+        (NOTE_ON, MIN_PITCH, MAX_PITCH),
+        (NOTE_OFF, MIN_PITCH, MAX_PITCH),
+        (TIME_SHIFT, 1, NoteSequences.DEFAULT_MAX_SHIFT_STEPS),
+        (VELOCITY, 1, 32) # 32 velocity bins
+    ]
+    performance.num_classes = 308 + 2 # Add PAD, EOS
+    performance.events = deepcopy(primer)
+
+    # Take account of PAD and EOS by adding 2 to encodeindex
+    inputs = map(event -> encodeindex(event, performance) + 2, performance)
+
+    logits = model(inputs)
+    prediction = wsample(performance.labels, softmax(logits[:, end]))
+    push!(inputs, prediction)
+    push!(performance, decodeindex(prediction, performance))
+
+    # Sample till end of sequence is encountered (EOS = 2)
+    while pred != 2
+        logits = model(inputs)
+        prediction = wsample(performance.labels, softmax(logits[:, end]))
+        push!(inputs, prediction)
+        push!(performance, decodeindex(prediction, performance))
+        print(prediction)
+    end
+
+    raw == true && return performance
+    getnotesequence(performance)
 end
 
 function Base.show(io::IO, mt::BaselineMusicTransformer)

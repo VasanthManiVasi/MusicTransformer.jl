@@ -1,6 +1,6 @@
 module MusicTransformer
 
-using Transformers
+using Transformers, Flux
 
 include("models.jl")
 include("pretrain.jl")
