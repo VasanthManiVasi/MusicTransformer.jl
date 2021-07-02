@@ -51,10 +51,7 @@ function sample_and_append!(logits, performance, inputs)
     prediction
 end
 
-function generate(model::MT;
-    primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
-    raw = false)
-
+function default_performance()
     performance = Performance(100, velocity_bins = 32)
     MIN_PITCH = 21
     MAX_PITCH = 108
@@ -65,6 +62,13 @@ function generate(model::MT;
         (VELOCITY, 1, 32) # 32 velocity bins
     ]
     performance.num_classes = 308 + 2 # Add PAD, EOS
+end
+
+function generate(model::BaselineMusicTransformer;
+                  primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
+                  raw = false)
+
+    performance = default_performance()
     performance.events = deepcopy(primer)
 
     # Take account of PAD and EOS by adding 2 to encodeindex
