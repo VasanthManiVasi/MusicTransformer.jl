@@ -41,6 +41,16 @@ function (mt::BaselineMusicTransformer)(embeds::T) where T
     mt.ts(embeds)
 end
 
+function sample_and_append!(logits, performance, inputs)
+    prediction = wsample(performance.labels, softmax(logits[:, end]))
+    # Add prediction to the model inputs
+    push!(inputs, prediction)
+    # Add predicted event to performance
+    push!(performance, decodeindex(prediction, performance))
+
+    prediction
+end
+
 function generate(model::MT;
     primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
     raw = false)
@@ -61,17 +71,13 @@ function generate(model::MT;
     inputs = map(event -> encodeindex(event, performance) + 2, performance)
 
     logits = model(inputs)
-    prediction = wsample(performance.labels, softmax(logits[:, end]))
-    push!(inputs, prediction)
-    push!(performance, decodeindex(prediction, performance))
+    pred = sample_and_append!(logits, performance, inputs)
 
     # Sample till end of sequence is encountered (EOS = 2)
     while pred != 2
         logits = model(inputs)
-        prediction = wsample(performance.labels, softmax(logits[:, end]))
-        push!(inputs, prediction)
-        push!(performance, decodeindex(prediction, performance))
-        print(prediction)
+        pred = sample_and_append!(logits, performance, inputs)
+        print(pred)
     end
 
     raw == true && return performance
