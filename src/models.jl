@@ -41,6 +41,43 @@ function (mt::BaselineMusicTransformer)(embeds::T) where T
     mt.ts(embeds)
 end
 
+function (t::Transformer)(x::A, mask=nothing) where {T, N, A<:AbstractArray{T, N}}
+    dropout = t.drop
+
+    # Layer norm is a preprocess for the unconditional 16L Music Transformer,
+    # Dropout and addition (residual connection) are postprocesses
+
+    # Add x in residual connection
+    # Attention layer
+    x_normed = t.mhn(x) # LayerNorm
+    a = t.mh(x_normed, x_normed, x_normed; mask=mask) # MultiheadAttention
+    # a = dropout(a) # Dropout
+    res_a = x + a # Addition (residual)
+
+    # Feed-forward layer
+    res_a_normed = t.pwn(res_a) # LayerNorm
+    pwffn = t.pw(res_a_normed) # Pointwise feed-forward
+    # pwffn = dropout(pwffn) # Dropout
+    res_pwffn = res_a + pwffn # Addition
+    res_pwffn
+
+    #=
+    # Add x_norm in residual connection
+    # Attention layer
+    x = t.mhn(x) # LayerNorm
+    a = t.mh(x, x, x; mask=mask) # MultiheadAttention
+    # a = dropout(a) # Dropout
+    res_a = x + a # Addition (residual)
+
+    # Feed-forward layer
+    res_a = t.pwn(res_a) # LayerNorm
+    pwffn = t.pw(res_a) # Pointwise feed-forward
+    # pwffn = dropout(pwffn) # Dropout
+    res_pwffn = res_a + pwffn # Addition
+    res_pwffn
+    =#
+end
+
 function sample_and_append!(logits, performance, inputs)
     prediction = wsample(performance.labels, softmax(logits[:, end]))
     # Add prediction to the model inputs
