@@ -93,14 +93,24 @@ function load_pretrained_musictransformer(weights)
         end
     end
 
+    output_norm = filter(l->occursin("transformer/body/decoder/layer_prepostprocess/layer_norm", l), layers)
+    block_index = 20
+    for k ∈ output_norm
+        if occursin("layer_norm_scale", k)
+            loadparams!(mt[block_index].diag.α, [weights[k]])
+        elseif occursin("layer_norm_bias", k)
+            loadparams!(mt[block_index].diag.β, [weights[k]])
+        end
+    end
+
     # Load embedding
     embedding = weights["transformer/symbol_modality_310_512/shared/weights_0"]
     loadparams!(mt.ts[1], [embedding])
 
     # This pre-trained Music Transformer shares embedding and softmax weights
     # Base.lastindex is not defined on Stack, manually write the last index for now
-    # 3 embedding layers, 16 transformer body blocks, + 1 is the last embedding layer
-    last_layer = 3 + 16 + 1
+    # 3 embedding layers, 16 transformer body blocks, 1 output layer norm, + 1 is the last embedding layer
+    last_layer = 3 + 16 + 1 + 1
     loadparams!(mt.ts[last_layer].W, [embedding'])
 
     mt

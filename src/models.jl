@@ -24,7 +24,7 @@ end
 function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers::Int)
     BaselineMusicTransformer(
         Stack(
-            @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers => logits"),
+            @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers => norm => logits"),
             Embed(size, 310),
             PositionEmbedding(size, 2048),
             (e, pe) -> (e .+ pe),
@@ -32,6 +32,7 @@ function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers
                 Transformer(size, head, hs, ps; future=false, pdrop=0)
                 for i = 1:layers
             ]...,
+            LayerNorm(size),
             Dense(size, 310),
         )
     )
@@ -89,7 +90,7 @@ function (t::Transformer)(x::A, mask=nothing) where {T, N, A<:AbstractArray{T, N
     =#
 end
 
-function sample_and_append!(logits, performance, inputs)
+function sample_and_append!(logits::Array, performance::Performance, inputs::Vector{Int})
     prediction = wsample(performance.labels, softmax(logits[:, end]))
     # Add prediction to the model inputs
     push!(inputs, prediction)
@@ -110,6 +111,7 @@ function default_performance()
         (VELOCITY, 1, 32) # 32 velocity bins
     ]
     performance.num_classes = 308 + 2 # Add PAD, EOS
+    performance
 end
 
 function generate(model::BaselineMusicTransformer;
