@@ -117,6 +117,7 @@ end
 
 function generate(model::BaselineMusicTransformer;
                   primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
+                  numsteps = 3000,
                   raw = false)
 
     performance = default_performance()
@@ -129,10 +130,10 @@ function generate(model::BaselineMusicTransformer;
     pred = sample_and_append!(logits, performance, inputs)
 
     # Sample till end of sequence is encountered (EOS = 2)
-    while pred != 2
+    while pred != 2 && performance.numsteps <= nsteps
         logits = model(inputs)
         pred = sample_and_append!(logits, performance, inputs)
-        print(pred)
+        print(pred, " ", performance.numsteps)
     end
 
     raw == true && return performance
