@@ -5,9 +5,6 @@ using Transformers.Basic
 using Transformers.Basic: AbstractTransformer
 using Transformers.Stacks
 
-using NoteSequences
-using StatsBase: wsample
-
 abstract type MusicTransformerModel <: AbstractTransformer end
 
 struct BaselineMusicTransformer{T<:Stack} <: MusicTransformerModel
@@ -43,55 +40,6 @@ end
 
 function (mt::BaselineMusicTransformer)(embeds::T) where T
     mt.ts(embeds)
-end
-
-function sample_and_append!(logits::Array, performance::Performance, inputs::Vector{Int})
-    prediction = wsample(performance.labels, softmax(logits[:, end]))
-    # Add prediction to the model inputs
-    push!(inputs, prediction)
-    # Add predicted event to performance
-    push!(performance, decodeindex(prediction, performance))
-
-    prediction
-end
-
-function default_performance()
-    performance = Performance(100, velocity_bins = 32)
-    MIN_PITCH = 21
-    MAX_PITCH = 108
-    performance.event_ranges = [
-        (NOTE_ON, MIN_PITCH, MAX_PITCH),
-        (NOTE_OFF, MIN_PITCH, MAX_PITCH),
-        (TIME_SHIFT, 1, NoteSequences.DEFAULT_MAX_SHIFT_STEPS),
-        (VELOCITY, 1, 32) # 32 velocity bins
-    ]
-    performance.num_classes = 308 + 2 # Add PAD, EOS
-    performance
-end
-
-function generate(model::MusicTransformerModel;
-                  primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
-                  numsteps = 3000,
-                  raw = false)
-
-    performance = default_performance()
-    performance.events = deepcopy(primer)
-
-    # Take account of PAD and EOS by adding 2 to encodeindex
-    inputs = map(event -> encodeindex(event, performance) + 2, performance)
-
-    logits = model(inputs)
-    pred = sample_and_append!(logits, performance, inputs)
-
-    # Sample till end of sequence is encountered (EOS = 2)
-    while pred != 2 && performance.numsteps <= nsteps
-        logits = model(inputs)
-        pred = sample_and_append!(logits, performance, inputs)
-        print(pred, " ", performance.numsteps)
-    end
-
-    raw == true && return performance
-    getnotesequence(performance)
 end
 
 function Base.show(io::IO, mt::BaselineMusicTransformer)
