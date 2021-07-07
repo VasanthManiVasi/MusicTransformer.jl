@@ -1,8 +1,9 @@
+export BaselineMusicTransformer
+
 using Flux: unsqueeze, @functor
 using MacroTools: @forward
 
-using Transformers.Basic
-using Transformers.Basic: AbstractTransformer
+using Transformers.Basic: AbstractTransformer, Embed
 using Transformers.Stacks
 
 abstract type MusicTransformerModel <: AbstractTransformer end

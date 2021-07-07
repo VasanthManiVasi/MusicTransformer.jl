@@ -1,6 +1,8 @@
+export MusicTransformerBlock, PositionEmbeddingT2T
+
 using Flux: @functor
 using Transformers.Basic
-using Transformers.Basic: AbstractTransformer
+using Transformers.Basic: AbstractTransformer, MultiheadAttention, PwFFN
 
 struct MusicTransformerBlock{MA<:MultiheadAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
     mh::MA

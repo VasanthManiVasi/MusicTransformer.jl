@@ -1,3 +1,5 @@
+export generate
+
 using NoteSequences
 using StatsBase: wsample
 
@@ -41,10 +43,16 @@ end
 
 function generate(model::MusicTransformerModel;
                   primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
-                  numsteps::Int = 3000)
+                  numsteps::Int=3000,
+                  as_notesequence::Bool=false)
 
     performance = default_performance()
     performance.events = deepcopy(primer)
+
+    @info "Generating..."
     generate_events!(model, performance, numsteps)
-    getnotesequence(performance)
+
+    ns = getnotesequence(performance)
+    as_notesequence == true && return ns
+    notesequence_to_midi(ns)
 end
