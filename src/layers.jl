@@ -112,3 +112,20 @@ function MultiheadRelativeAttention(head::Int,
                               Dense(is, hs*head), Dense(is, hs*head), Dense(is, hs*head), Dense(hs*head, os),
                               Dropout(pdrop))
 end
+
+function Base.show(io::IO, mh::MultiheadRelativeAttention)
+    hs = div(size(mh.iqproj.W)[1], mh.head)
+    is = size(mh.iqproj.W)[end]
+    os = size(mh.oproj.W)[1]
+
+    print(io, "MultiheadRelativeAttention(")
+    print(io, "head=$(mh.head), ")
+    print(io, "head_size=$(hs), ")
+    print(io, "$(is)=>$(os)")
+
+    if Flux.istraining()
+        print(io, ", dropout=$(mh.drop.p))")
+    else
+        print(io, ")")
+    end
+end
