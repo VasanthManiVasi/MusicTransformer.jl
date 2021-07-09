@@ -2,7 +2,7 @@ export MusicTransformerBlock, PositionEmbeddingT2T
 
 using Flux: @functor
 using Transformers.Basic
-using Transformers.Basic: AbstractTransformer, MultiheadAttention, PwFFN
+using Transformers.Basic: AbstractTransformer, AbstractAttention, MultiheadAttention, PwFFN
 
 struct MusicTransformerBlock{MA<:MultiheadAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
     mh::MA
@@ -72,4 +72,43 @@ function PositionEmbeddingT2T(size::Int, max_len::Int = 2048)
     scaled_time = unsqueeze(positions, 2) * unsqueeze(inv_timescales, 1)
     timing_signals = hcat(sin.(scaled_time), cos.(scaled_time))
     PositionEmbedding(false, collect(timing_signals'))
+end
+
+struct MultiheadRelativeAttention{R<:AbstractArray, Q<:Dense, K<:Dense, V<:Dense, O<:Dense, DP<:Dropout} <: AbstractAttention
+    head::Int
+    future::Bool
+    relative_embedding::R
+    iqproj::Q
+    ikproj::K
+    ivproj::V
+    oproj::O
+    drop::DP
+end
+
+function Flux.functor(mh::MultiheadRelativeAttention)
+    (mh.relative_embedding, mh.iqproj, mh.ikproj, mh.ivproj, mh.oproj), m -> MultiheadRelativeAttention(
+                                                                                    mh.head,
+                                                                                    mh.future,
+                                                                                    m...,
+                                                                                    mh.drop)
+end
+
+function MultiheadRelativeAttention(head::Int,
+                                    is::Int,
+                                    hs::Int,
+                                    os::Int,
+                                    max_relative_position::Int;
+                                    future::Bool=true,
+                                    share_relative_embedding::Bool=true,
+                                    pdrop = 0.1)
+
+    if share_relative_embedding
+        relative_embedding = randn(hs, max_relative_position)
+    else
+        relative_embedding = randn(hs, max_relative_position, heads)
+    end
+
+    MultiheadRelativeAttention(head, future, relative_embedding,
+                              Dense(is, hs*head), Dense(is, hs*head), Dense(is, hs*head), Dense(hs*head, os),
+                              Dropout(pdrop))
 end
