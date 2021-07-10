@@ -1,9 +1,11 @@
 export MusicTransformerBlock, PositionEmbeddingT2T
 
 using Flux: @functor
+using Tullio
+
+using Transformers: Abstract3DTensor
 using Transformers.Basic
 using Transformers.Basic: AbstractTransformer, AbstractAttention, MultiheadAttention, PwFFN
-using Transformers: Abstract3DTensor
 
 struct MusicTransformerBlock{MA<:MultiheadAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
     mh::MA
@@ -173,4 +175,34 @@ function relative_attention(query::A1,
                                             A4 <: Union{Abstract3DTensor{T}, AbstractMatrix{T}}}
 
     # TODO: Implement rel attn
+end
+
+get_relative_embedding(r::AbstractMatrix{T}, seq_len::Int) where {T} = r[:, end-seq_len+1:end]
+get_relative_embedding(r::Abstract3DTensor{T}, seq_len::Int) where {T} = r[:, end-seq_len+1:end, :]
+
+function mul_relative_keys(x::Abstract3DTensor{T}, y::AbstractMatrix{T}) where {T}
+    # Heads share relative embedding
+    @tullio z[m, l, h] := x[d, l, h] * y[d, m]
+end
+
+function mul_relative_keys(x::Abstract3DTensor{T}, y::Abstract3DTensor{T}) where {T}
+    # Heads don't share relative embedding
+    @tullio z[m, l, h] := x[d, l, h] * y[d, m, h]
+end
+
+function _relative_to_absolute_position(x::Abstract3DTensor{T}) where {T}
+    # size(x) == (seq_len, seq_len, heads)
+    _, seq_len, heads = size(x)
+
+    # Padding
+    x = vcat(zeros(T, 1, seq_len, heads), x)
+
+    # Reshape
+    x = reshape(x, (seq_len, seq_len+1, :))
+    x = permutedims(x, (2, 1, 3))
+
+    # Slice
+    x = x[2:end, :, :]
+
+    x
 end

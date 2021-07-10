@@ -16,6 +16,7 @@ Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 Transformers = "21ca0261-441d-5938-ace7-c90938fde4d4"
+Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 
 [compat]
 julia = "1"
