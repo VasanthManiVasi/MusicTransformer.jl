@@ -3,9 +3,9 @@ export MusicTransformerBlock, PositionEmbeddingT2T
 using Flux: @functor
 using Tullio
 
-using Transformers: Abstract3DTensor
 using Transformers.Basic
 using Transformers.Basic: AbstractTransformer, AbstractAttention, MultiheadAttention, PwFFN
+using Transformers: Abstract3DTensor, batchedmul
 
 struct MusicTransformerBlock{MA<:MultiheadAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
     mh::MA
@@ -174,7 +174,29 @@ function relative_attention(query::A1,
                                             A3 <: Abstract3DTensor{T},
                                             A4 <: Union{Abstract3DTensor{T}, AbstractMatrix{T}}}
 
-    # TODO: Implement rel attn
+    #size(query) == (dims, {q,k}_seq_len, batch) == size(key) == size(value)
+    #size(score) == (k_seq_len, q_seq_len, batch)
+    dk = size(key, 1)
+    score = batchedmul(key, query; transA = true)
+
+    # if share_relative_embedding: size(rel_embed) == (dims, q_seq_len)
+    # else:                        size(rel_embed) == (dims, q_seq_len, heads)
+    seq_len = size(key, 2)
+    rel_embed = get_relative_embedding(relative_embedding, seq_len)
+
+    # size(rel_score) == (k_seq_len, q_seq_len, batch)
+    rel_score = mul_relative_keys(query, rel_embed)
+    rel_score = _relative_to_absolute_position(rel_score)
+
+    # Add relative positional information to attention score
+    score += rel_score
+
+    score = score ./ convert(T, sqrt(dk))
+
+    score = Transformers.Basic.apply_mask(score, mask, future)
+    score = softmax(score; dims=1)
+    dropout !== nothing && (score = dropout(score))
+    batchedmul(value, score) #size(return) == (dims, q_seq_len, batch)
 end
 
 get_relative_embedding(r::AbstractMatrix{T}, seq_len::Int) where {T} = r[:, end-seq_len+1:end]
