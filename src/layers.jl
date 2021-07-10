@@ -3,6 +3,7 @@ export MusicTransformerBlock, PositionEmbeddingT2T
 using Flux: @functor
 using Transformers.Basic
 using Transformers.Basic: AbstractTransformer, AbstractAttention, MultiheadAttention, PwFFN
+using Transformers: Abstract3DTensor
 
 struct MusicTransformerBlock{MA<:MultiheadAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
     mh::MA
@@ -128,4 +129,48 @@ function Base.show(io::IO, mh::MultiheadRelativeAttention)
     else
         print(io, ")")
     end
+end
+
+function (mh::MultiheadRelativeAttention)(query::A1,
+                                          key::A2,
+                                          value::A3;
+                                          mask=nothing) where {T,
+                                                               A1 <: AbstractMatrix{T},
+                                                               A2 <: AbstractMatrix{T},
+                                                               A3 <: AbstractMatrix{T}}
+
+    # size(query) == (dims, seq_len)
+    ipq = mh.iqproj(query)
+    ipk = mh.ikproj(key)
+    ipv = mh.ivproj(value)
+
+    h = size(ipq)[1] #h == hs * head
+    hs = div(h, mh.head)
+
+    #size(hq) == (hs, seq_len, head)
+    hq = permutedims(reshape(ipq, hs, mh.head, :), [1, 3, 2])
+    hk = permutedims(reshape(ipk, hs, mh.head, :), [1, 3, 2])
+    hv = permutedims(reshape(ipv, hs, mh.head, :), [1, 3, 2])
+
+    atten = relative_attention(hq, hk, hv, mh.relative_embedding,
+                               mask, mh.future, mh.drop)
+
+    # size(atten) == (head*hs, seq_len)
+    atten = reshape(permutedims(atten, [1, 3, 2]), h, :)
+
+    mh.oproj(atten)
+end
+
+function relative_attention(query::A1,
+                            key::A2,
+                            value::A3,
+                            relative_embedding::A4,
+                            mask, future::Bool,
+                            dropout) where {T,
+                                            A1 <: Abstract3DTensor{T},
+                                            A2 <: Abstract3DTensor{T},
+                                            A3 <: Abstract3DTensor{T},
+                                            A4 <: Union{Abstract3DTensor{T}, AbstractMatrix{T}}}
+
+    # TODO: Implement rel attn
 end
