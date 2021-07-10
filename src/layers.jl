@@ -1,4 +1,4 @@
-export MusicTransformerBlock, PositionEmbeddingT2T
+export MusicTransformerBlock, PositionEncoding
 
 using Flux: @functor
 using Tullio
@@ -66,7 +66,7 @@ function Base.show(io::IO, t::MusicTransformerBlock)
     end
 end
 
-function PositionEmbeddingT2T(size::Int, max_len::Int = 2048)
+function PositionEncoding(size::Int, max_len::Int = 2048)
     # Follows the tensor2tensor implementation - which is used by the unconditional 16L Music Transformer
     num_timescales = size / 2
     positions = Float32.(collect(0.0:max_len-1))

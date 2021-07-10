@@ -26,7 +26,7 @@ function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers
         Stack(
             @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers => norm => logits"),
             Embed(size, 310),
-            PositionEmbeddingT2T(size, 2048),
+            PositionEncoding(size, 2048),
             # Perform bottom transformation and add position embedding
             (e, pe) -> ((e .* sqrt(size)) .+ pe),
             [
