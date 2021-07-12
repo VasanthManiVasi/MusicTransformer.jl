@@ -106,9 +106,9 @@ function MultiheadRelativeAttention(head::Int,
                                     pdrop = 0.1)
 
     if share_relative_embedding
-        relative_embedding = randn(hs, max_relative_position)
+        relative_embedding = randn(Float32, hs, max_relative_position)
     else
-        relative_embedding = randn(hs, max_relative_position, heads)
+        relative_embedding = randn(Float32, hs, max_relative_position, heads)
     end
 
     MultiheadRelativeAttention(head, future, relative_embedding,
@@ -227,4 +227,62 @@ function _relative_to_absolute_position(x::Abstract3DTensor{T}) where {T}
     x = x[2:end, :, :]
 
     x
+end
+
+struct TransformerRelative{MA<:MultiheadRelativeAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
+    mh::MA
+    mhn::LA
+    pw::P
+    pwn::LP
+    drop::DP
+end
+
+@functor TransformerRelative
+
+function TransformerRelative(size::Int, head::Int, ps::Int, max_relative_position::Int; future::Bool = true, act = relu, pdrop = 0.1)
+    rem(size, head) != 0 && error("size not divisible by head")
+    TransformerRelative(size, head, div(size, head), ps, max_relative_position; future=future, act=act, pdrop=pdrop)
+end
+
+TransformerRelative(size::Int, head::Int, hs::Int, ps::Int, max_relative_position::Int; future::Bool = true, act = relu, pdrop = 0.1) = TransformerRelative(
+    MultiheadRelativeAttention(head, size, hs, size, max_relative_position; future=future, pdrop=pdrop),
+    LayerNorm(size),
+    PwFFN(size, ps, act),
+    LayerNorm(size),
+    Dropout(pdrop),
+)
+
+function (t::TransformerRelative)(x::A, mask=nothing) where {T, N, A<:AbstractArray{T, N}}
+    dropout = t.drop
+
+    # Attention layer
+    a = t.mh(x, x, x; mask=mask)
+    a = dropout(a)
+    res_a = x + a
+    res_a = t.mhn(x)
+
+    # Feed-forward layer
+    pwffn = t.pw(res_a)
+    pwffn = dropout(pwffn)
+    res_pwffn = res_a + pwffn
+    res_pwffn = t.pwn(res_a)
+    res_pwffn
+end
+
+function Base.show(io::IO, t::TransformerRelative)
+    hs = div(size(t.mh.iqproj.W)[1], t.mh.head)
+    h, ps = size(t.pw.dout.W)
+    m = size(t.mh.relative_embedding, 2)
+
+    print(io, "TransformerRelative(")
+    print(io, "head=$(t.mh.head), ")
+    print(io, "head_size=$(hs), ")
+    print(io, "pwffn_size=$(ps), ")
+    print(io, "size=$(h), ")
+    print(io, "max_relative_position=$(m)")
+    if Flux.istraining()
+        print(io, ", dropout=$(t.drop.p))")
+    else
+        print(io, ")")
+    end
 end
