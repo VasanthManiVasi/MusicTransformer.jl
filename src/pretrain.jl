@@ -1,6 +1,9 @@
-using JLD2
+using JLD2, Requires, Pkg.TOML, DataDeps
 using Flux: loadparams!
-using Requires
+
+export list_pretrains, load_pretrain, @pretrain_str
+
+const configs = open(TOML.parse, joinpath(@__DIR__, "pretrains.toml"))
 
 """     readckpt(path)
 Load weights from a tensorflow checkpoint file into a Dict.
@@ -31,7 +34,7 @@ readckpt(path) = error("readckpt require TensorFlow.jl installed. run `Pkg.add(\
 end
 
 """     ckpt2_to_jld2(ckptpath::String, ckptname::String, savepath::String)
-Loads the pre-trained model weights from a tensorflow checkpoint and saves to JLD2
+Loads the pre-trained model weights from a TensorFlow checkpoint and saves to JLD2
 """
 function ckpt_to_jld2(ckptpath::String, ckptname::String; savepath::String="./")
     weights = readckpt(joinpath(ckptpath, ckptname))
@@ -40,16 +43,68 @@ function ckpt_to_jld2(ckptpath::String, ckptname::String; savepath::String="./")
     JLD2.@save jld2name weights
 end
 
-function load_pretrained_musictransformer(weights)
-    # All values are hardcoded for now since only one pre-trained model is available
-    mt = BaselineMusicTransformer(512, 8, 2048, 16)
+function register_configs(configs)
+    for (model_name, config) in pairs(configs)
+        model_desc = Transformers.Pretrain.description(config["description"], config["host"], config["link"])
+        checksum = config["checksum"]
+        url = config["url"]
+        dep = DataDep(model_name, model_desc, url, checksum;
+                      fetch_method=Transformers.Datasets.download_gdrive)
+        DataDeps.register(dep)
+    end
+end
+
+"""     list_pretrains()
+List all the available pre-trained models.
+"""
+function list_pretrains()
+    println.(keys(configs))
+    return
+end
+
+"""     load_pretrain(path)
+Loads a pre-trained Music Transformer model.
+"""
+function load_pretrain(model_name::String)
+    if model_name ∉ keys(configs)
+        error("""Invalid model.
+               Please try list_pretrains() to check the available pre-trained models""")
+    end
+
+    model_config = configs[model_name]
+    loader = loading_method(Val(Symbol(model_config["model_type"])))
+
+    model_path = @datadep_str("$model_name/$model_name.jld2")
+    if !endswith(model_path, ".jld2")
+        error("""Invalid file. A .jld2 file is required to load the model.
+                 If this is a tensorflow checkpoint file, run ckpt_to_jld2 to convert it.""")
+    end
+
+    JLD2.@load model_path weights
+    loader(weights, model_config)
+end
+
+loading_method(::Val{:unconditional}) = load_unconditional_musictransformer
+
+# Macro from Transformers.jl
+macro pretrain_str(name)
+    :(load_pretrain($(esc(name))))
+end
+
+function load_unconditional_musictransformer(weights, config)
+    num_layers = config["num_layers"]
+    heads = config["heads"]
+    depth = config["depth"]
+    ffn_depth = config["ffn_depth"]
+
+    mt = BaselineMusicTransformer(depth, heads, ffn_depth, num_layers)
 
     layers = keys(weights)
 
-    for i = 1:16
+    for i = 1:num_layers
         # Get all layers in a block
         block = filter(l->occursin("layer_$(i-1)/", l), layers)
-        # Index of the block in Transformer body  - after embedding, position embedding and e .+ pe layers
+        # Index of the block in Transformer body - after the embedding layers
         block_index = i + 3
         for k ∈ block
             if occursin("self_attention", k)
@@ -91,7 +146,7 @@ function load_pretrained_musictransformer(weights)
     end
 
     output_norm = filter(l->occursin("transformer/body/decoder/layer_prepostprocess/layer_norm", l), layers)
-    block_index = 20
+    block_index = 3 + num_layers + 1
     for k ∈ output_norm
         if occursin("layer_norm_scale", k)
             loadparams!(mt[block_index].diag.α, [weights[k]])
@@ -107,7 +162,7 @@ function load_pretrained_musictransformer(weights)
     # This pre-trained Music Transformer shares embedding and softmax weights
     # Base.lastindex is not defined on Stack, manually write the last index for now
     # 3 embedding layers, 16 transformer body blocks, 1 output layer norm, + 1 is the last embedding layer
-    last_layer = 3 + 16 + 1 + 1
+    last_layer = 3 + num_layers + 1 + 1
     loadparams!(mt.ts[last_layer].W, [embedding'])
 
     mt
