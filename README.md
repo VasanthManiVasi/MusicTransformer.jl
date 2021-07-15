@@ -10,6 +10,19 @@ The Music Transformer is an attention-based neural network that can generate mus
 ] add https://github.com/VasanthManiVasi/MusicTransformer.jl
 ```
 
+## Example
+
+```julia
+using MusicTransformer, FileIO
+ENV["DATADEPS_ALWAYS_ACCEPT"] = true
+
+music_transformer = pretrain"unconditional_model_16"
+
+midi = generate(music_transformer, numsteps=1000)
+
+save("generated.mid", midi)
+```
+
 ## References
 1. [**Music Transformer: Generating Music with Long-Term Structure** - _arxiv.org_](https://arxiv.org/abs/1809.04281)
 2. [**Music Transformer** - _Google_](https://magenta.tensorflow.org/music-transformer)
