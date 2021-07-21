@@ -1,56 +1,59 @@
 export generate
 
 using NoteSequences
+using NoteSequences.PerformanceRepr
 using StatsBase: wsample
 
-function default_performance()
-    performance = Performance(100, velocity_bins = 32)
-    MIN_PITCH = 21
-    MAX_PITCH = 108
-    performance.event_ranges = [
-        (NOTE_ON, MIN_PITCH, MAX_PITCH),
-        (NOTE_OFF, MIN_PITCH, MAX_PITCH),
-        (TIME_SHIFT, 1, NoteSequences.DEFAULT_MAX_SHIFT_STEPS),
-        (VELOCITY, 1, 32) # 32 velocity bins
-    ]
-    performance.num_classes = 308 + 2 # Add PAD, EOS
-    performance
+function default_performance_encoder()
+    perfencoder = PerformanceOneHotEncoding(num_velocitybins=32)
+
+    perfencoder
 end
 
-function sample_and_append!(logits::Array, performance::Performance, inputs::Vector{Int})
-    prediction = wsample(performance.labels, softmax(logits[:, end]))
+function sample_and_append!(logits::Array,
+                            performance::Performance,
+                            perfencoder::PerformanceOneHotEncoding,
+                            inputs::Vector{Int})
+    prediction = wsample(perfencoder.labels, softmax(logits[:, end]))
     # Add prediction to the model inputs
     push!(inputs, prediction)
     # Add predicted event to performance
-    push!(performance, decodeindex(prediction, performance))
+    push!(performance, decodeindex(prediction, perfencoder))
 
     prediction
 end
 
-function generate_events!(model::MusicTransformerModel, performance::Performance, numsteps::Int)
+function generate_events!(model::MusicTransformerModel,
+                          performance::Performance,
+                          perfencoder::PerformanceOneHotEncoding,
+                          numsteps::Int)
     # Take account of PAD and EOS by adding 2 to encodeindex
-    inputs = map(event -> encodeindex(event, performance) + 2, performance)
+    inputs = map(event -> encodeindex(event, perfencoder) + 2, performance)
 
     logits = model(inputs)
-    pred = sample_and_append!(logits, performance, inputs)
+    pred = sample_and_append!(logits, performance, perfencoder, inputs)
 
     # Sample till end of sequence is encountered (EOS = 2) or numsteps is reached
     while pred != 2 && performance.numsteps <= numsteps
         logits = model(inputs)
-        pred = sample_and_append!(logits, performance, inputs)
+        pred = sample_and_append!(logits, performance, perfencoder, inputs)
     end
 end
 
 function generate(model::MusicTransformerModel;
-                  primer::Vector{PerformanceEvent}=[PerformanceEvent(TIME_SHIFT, 100)],
+                  primer::Performance=Performance(100, velocity_bins=32),
                   numsteps::Int=3000,
                   as_notesequence::Bool=false)
 
-    performance = default_performance()
-    performance.events = deepcopy(primer)
+    perfencoder = default_performance_encoder()
+    performance = deepcopy(primer)
+
+    if isempty(performance)
+        push!(performance, perfencoder.defaultevent)
+    end
 
     @info "Generating..."
-    generate_events!(model, performance, numsteps)
+    generate_events!(model, performance, perfencoder, numsteps)
 
     ns = getnotesequence(performance)
     as_notesequence == true && return ns
