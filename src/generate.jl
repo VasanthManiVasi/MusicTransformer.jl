@@ -5,7 +5,11 @@ using NoteSequences.PerformanceRepr
 using StatsBase: wsample
 
 function default_performance_encoder()
-    perfencoder = PerformanceOneHotEncoding(num_velocitybins=32)
+    MIN_PITCH = 21
+    MAX_PITCH = 108
+    perfencoder = PerformanceOneHotEncoding(minpitch=MIN_PITCH,
+                                            maxpitch=MAX_PITCH,
+                                            num_velocitybins=32)
 
     perfencoder
 end
