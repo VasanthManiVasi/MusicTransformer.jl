@@ -4,6 +4,8 @@ using NoteSequences
 using NoteSequences.PerformanceRepr
 using StatsBase: wsample
 
+const num_reserved_tokens = 2
+
 function default_performance_encoder()
     MIN_PITCH = 21
     MAX_PITCH = 108
@@ -22,7 +24,7 @@ function sample_and_append!(logits::Array,
     # Add prediction to the model inputs
     push!(inputs, prediction)
     # Add predicted event to performance
-    push!(performance, decodeindex(prediction, perfencoder))
+    push!(performance, decodeindex(prediction - num_reserved_tokens, perfencoder))
 
     prediction
 end
@@ -32,7 +34,7 @@ function generate_events!(model::MusicTransformerModel,
                           perfencoder::PerformanceOneHotEncoding,
                           numsteps::Int)
     # Take account of PAD and EOS by adding 2 to encodeindex
-    inputs = map(event -> encodeindex(event, perfencoder) + 2, performance)
+    inputs = map(event -> encodeindex(event, perfencoder) + num_reserved_tokens, performance)
 
     logits = model(inputs)
     pred = sample_and_append!(logits, performance, perfencoder, inputs)
@@ -47,9 +49,9 @@ end
 function generate(model::MusicTransformerModel;
                   primer::Performance=Performance(100, velocity_bins=32),
                   numsteps::Int=3000,
-                  as_notesequence::Bool=false)
+                  as_notesequence::Bool=false,
+                  perfencoder::PerformanceOneHotEncoding=default_performance_encoder())
 
-    perfencoder = default_performance_encoder()
     performance = deepcopy(primer)
 
     if isempty(performance)
