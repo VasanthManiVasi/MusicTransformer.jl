@@ -1,6 +1,7 @@
 module MusicTransformer
 
-using Transformers, Flux
+using Flux
+using Transformers
 
 include("layers.jl")
 include("models.jl")
