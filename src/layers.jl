@@ -134,6 +134,45 @@ function Base.show(io::IO, mh::MultiheadRelativeAttention)
 end
 
 function (mh::MultiheadRelativeAttention)(query::A1,
+                                  key::A2,
+                                  value::A3;
+                                  mask=nothing) where {T,
+                                                       A1 <: Abstract3DTensor{T},
+                                                       A2 <: Abstract3DTensor{T},
+                                                       A3 <: Abstract3DTensor{T}}
+    qs = size(query)
+    ks = size(key)
+    vs = size(value)
+
+      #size(ipq) == (h, q_seq_len, batch)
+    ipq = @toNd mh.iqproj(query)
+    ipk = @toNd mh.ikproj(key)
+    ipv = @toNd mh.ivproj(value)
+
+    h = size(ipq, 1)
+    hs = div(h, mh.head)
+
+    #size(ipq) == (hs, q_seq_len, head, batch)
+    ipq = permutedims(reshape(ipq, hs, mh.head, qs[2], qs[3]), [1, 3, 2, 4])
+    ipk = permutedims(reshape(ipk, hs, mh.head, ks[2], ks[3]), [1, 3, 2, 4])
+    ipv = permutedims(reshape(ipv, hs, mh.head, vs[2], vs[3]), [1, 3, 2, 4])
+
+    #size(ipq) == (hs, q_seq_len, head * batch)
+    ipq = reshape(ipq, hs, qs[2], :)
+    ipk = reshape(ipk, hs, ks[2], :)
+    ipv = reshape(ipv, hs, vs[2], :)
+
+    atten = relative_attention(ipq,ipk,ipv, mh.relative_embedding,
+                               mask, mh.future, mh.drop)
+
+    atten = permutedims(reshape(atten, hs, qs[2], mh.head, qs[3]), [1, 3, 2, 4]) #size(atten) == (hs, head, ql, b)
+    atten = reshape(atten, h, qs[2], qs[3]) #size(atten) == (h, ql, b)
+
+    out = @toNd mh.oproj(atten)
+    out #size(out) == (h, q_seq_len, batch)
+end
+
+function (mh::MultiheadRelativeAttention)(query::A1,
                                           key::A2,
                                           value::A3;
                                           mask=nothing) where {T,
