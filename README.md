@@ -6,19 +6,23 @@ The Music Transformer is an attention-based neural network that can generate mus
 
 ## Installation
 
+MusicTransformer.jl uses [NoteSequences.jl](https://github.com/VasanthManiVasi/NoteSequences.jl) internally. Please install both of them to use the package.
+
 ```julia
+] add https://github.com/VasanthManiVasi/NoteSequences.jl
 ] add https://github.com/VasanthManiVasi/MusicTransformer.jl
 ```
 
 ## Example
 
 ```julia
-using MusicTransformer, FileIO
+using FileIO
+using MusicTransformer
 ENV["DATADEPS_ALWAYS_ACCEPT"] = true
 
 music_transformer = pretrain"unconditional_model_16"
 
-midi = generate(music_transformer, numsteps=1000)
+midi = generate(music_transformer, numsteps=1500)
 
 save("generated.mid", midi)
 ```
