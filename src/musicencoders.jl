@@ -3,7 +3,7 @@ export encode_notesequence, decode_to_notesequence
 
 using NoteSequences
 using NoteSequences.PerformanceRepr
-import NoteSequences.PerformanceRepr: encodeindex, decodeindex
+import NoteSequences: encodeindex, decodeindex
 
 const PAD_TOKEN = 1
 const EOS_TOKEN = 2
@@ -48,6 +48,8 @@ function Base.getproperty(encoder::MidiPerformanceEncoder, sym::Symbol)
         return 2 # PAD, EOS
     elseif sym === :vocab_size
         return encoder.encoding.num_classes + encoder.num_reserved_tokens
+    elseif sym === :default_event
+        return encoder.encoding.defaultevent
     else
         getfield(encoder, sym)
     end

@@ -1,65 +1,69 @@
 export generate
 
 using NoteSequences
-using NoteSequences.PerformanceRepr
-using StatsBase: wsample
+using NoteSequences: DEFAULT_STEPS_PER_SECOND
 
-const num_reserved_tokens = 2
+using StatsBase: wsample
 
 function default_performance_encoder()
     MIN_PITCH = 21
     MAX_PITCH = 108
-    perfencoder = PerformanceOneHotEncoding(minpitch=MIN_PITCH,
-                                            maxpitch=MAX_PITCH,
-                                            num_velocitybins=32)
+    steps_per_second = NoteSequences.DEFAULT_STEPS_PER_SECOND
+    num_velocitybins = 32
+    add_eos = false
+    encoder = MidiPerformanceEncoder(steps_per_second, num_velocitybins,
+                                     MIN_PITCH, MAX_PITCH, add_eos)
 
-    perfencoder
+    encoder
 end
 
 function sample_and_append!(logits::Array,
                             performance::Performance,
-                            perfencoder::PerformanceOneHotEncoding,
+                            encoder::MidiPerformanceEncoder,
                             inputs::Vector{Int})
-    prediction = wsample(perfencoder.labels, softmax(logits[:, end]))
+
+    prediction = wsample(1:encoder.vocab_size, softmax(logits[:, end]))
+
     # Add prediction to the model inputs
     push!(inputs, prediction)
+
     # Add predicted event to performance
-    push!(performance, decodeindex(prediction - num_reserved_tokens, perfencoder))
+    push!(performance, decodeindex(prediction, encoder))
 
     prediction
 end
 
 function generate_events!(model::MusicTransformerModel,
                           performance::Performance,
-                          perfencoder::PerformanceOneHotEncoding,
+                          encoder::MidiPerformanceEncoder,
                           numsteps::Int)
-    # Take account of PAD and EOS by adding 2 to encodeindex
-    inputs = map(event -> encodeindex(event, perfencoder) + num_reserved_tokens, performance)
+
+    inputs = map(event -> encodeindex(event, encoder), performance)
 
     logits = model(inputs)
-    pred = sample_and_append!(logits, performance, perfencoder, inputs)
+    pred = sample_and_append!(logits, performance, encoder, inputs)
 
-    # Sample till end of sequence is encountered (EOS = 2) or numsteps is reached
-    while pred != 2 && performance.numsteps <= numsteps
+    # Sample till end of sequence is encountered or numsteps is reached
+    while pred != EOS_TOKEN && performance.numsteps <= numsteps
         logits = model(inputs)
-        pred = sample_and_append!(logits, performance, perfencoder, inputs)
+        pred = sample_and_append!(logits, performance, encoder, inputs)
     end
 end
 
 function generate(model::MusicTransformerModel;
-                  primer::Performance=Performance(100, velocity_bins=32),
+                  primer::Performance=Performance(DEFAULT_STEPS_PER_SECOND, velocity_bins=32),
                   numsteps::Int=3000,
                   as_notesequence::Bool=false,
-                  perfencoder::PerformanceOneHotEncoding=default_performance_encoder())
+                  encoder::MidiPerformanceEncoder=default_performance_encoder())
 
     performance = deepcopy(primer)
 
     if isempty(performance)
-        push!(performance, perfencoder.defaultevent)
+        push!(performance, encoder.default_event)
     end
 
     @info "Generating..."
-    generate_events!(model, performance, perfencoder, numsteps)
+    generate_events!(model, performance, encoder, numsteps)
 
     ns = getnotesequence(performance)
     as_notesequence == true && return ns
