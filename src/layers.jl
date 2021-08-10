@@ -7,6 +7,7 @@ using Transformers.Basic
 using Transformers.Basic: AbstractTransformer, AbstractAttention, MultiheadAttention, PwFFN
 using Transformers: Abstract3DTensor, batchedmul
 
+
 struct MusicTransformerBlock{MA<:MultiheadAttention, LA<:LayerNorm, P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
     mh::MA
     mhn::LA
@@ -17,6 +18,14 @@ end
 
 @functor MusicTransformerBlock
 
+"""
+    MusicTransformerBlock(size::Int, head::Int, ps::Int;
+                          future::Bool = true, act = relu, pdrop = 0.1)
+    MusicTransformerBlock(size::Int, head::Int, hs::Int, ps::Int;
+                          future::Bool = true, act = relu, pdrop = 0.1)
+
+Return a Pre-LayerNorm Transformer Encoder.
+"""
 function MusicTransformerBlock(size::Int, head::Int, ps::Int; future::Bool = true, act = relu, pdrop = 0.1)
     rem(size, head) != 0 && error("size not divisible by head")
     MusicTransformerBlock(size, head, div(size, head), ps;future=future, act=act, pdrop=pdrop)
@@ -33,20 +42,20 @@ MusicTransformerBlock(size::Int, head::Int, hs::Int, ps::Int; future::Bool = tru
 function (t::MusicTransformerBlock)(x::A, mask=nothing) where {T, N, A<:AbstractArray{T, N}}
     dropout = t.drop
 
-    # Layer norm is a preprocess for the unconditional 16L Music Transformer,
-    # Dropout and addition (residual connection) are postprocesses
+    # Layer norm is a preprocess for the unconditional Music Transformer,
+    # Dropout and residual connection are postprocesses
 
-    # Attention layer
-    x_normed = t.mhn(x) # LayerNorm
-    a = t.mh(x_normed, x_normed, x_normed; mask=mask) # MultiheadAttention
-    a = dropout(a) # Dropout
-    res_a = x + a # Addition (residual)
+    # Self-Attention layer
+    x_normed = t.mhn(x)
+    a = t.mh(x_normed, x_normed, x_normed; mask=mask)
+    a = dropout(a)
+    res_a = x + a
 
     # Feed-forward layer
-    res_a_normed = t.pwn(res_a) # LayerNorm
-    pwffn = t.pw(res_a_normed) # Pointwise feed-forward
-    pwffn = dropout(pwffn) # Dropout
-    res_pwffn = res_a + pwffn # Addition
+    res_a_normed = t.pwn(res_a)
+    pwffn = t.pw(res_a_normed)
+    pwffn = dropout(pwffn)
+    res_pwffn = res_a + pwffn
     res_pwffn
 end
 
@@ -66,8 +75,84 @@ function Base.show(io::IO, t::MusicTransformerBlock)
     end
 end
 
+struct MusicTransformerDecoder{MA<:MultiheadAttention, LA<:LayerNorm,
+                               IMA<:MultiheadAttention, ILA<:LayerNorm,
+                               P<:PwFFN, LP<:LayerNorm, DP<:Dropout} <: AbstractTransformer
+    mh::MA
+    mhn::LA
+    imh::IMA
+    imhn::ILA
+    pw::P
+    pwn::LP
+    drop::DP
+end
+
+@functor MusicTransformerDecoder
+
+"""
+    MusicTransformerDecoder(size::Int, head::Int, ps::Int;
+                            act = relu, pdrop = 0.1)
+    MusicTransformerDecoder(size::Int, head::Int, hs::Int, ps::Int;
+                            act = relu, pdrop = 0.1)
+
+Return a Pre-LayerNorm Transformer Decoder.
+"""
+function MusicTransformerDecoder(size::Int, head::Int, ps::Int; act = relu, pdrop = 0.1)
+    rem(size, head) != 0 && error("size not divisible by head")
+    MusicTransformerDecoder(size, head, div(size, head), ps; act=act, pdrop=pdrop)
+end
+
+MusicTransformerDecoder(size::Int, head::Int, hs::Int, ps::Int; act = relu, pdrop = 0.1) = MusicTransformerDecoder(
+    MultiheadAttention(head, size, hs, size; future=false, pdrop=pdrop),
+    LayerNorm(size),
+    MultiheadAttention(head, size, hs, size; future=true, pdrop=pdrop),
+    LayerNorm(size),
+    PwFFN(size, ps, act),
+    LayerNorm(size),
+    Dropout(pdrop),
+)
+
+function (td::MusicTransformerDecoder)(x::AbstractArray{T,N}, m, mask=nothing) where {T,N}
+    dropout = td.drop
+
+    # Self-Attention layer
+    x_normed = td.mhn(x)
+    a = td.mh(x_normed, x_normed, x_normed)
+    a = dropout(a)
+    res_a = x + a
+
+    # Encoder-Decoder attention
+    res_a_normed = td.imhn(res_a)
+    ia = td.imh(res_a_normed, m, m, mask=mask)
+    ia = dropout(ia)
+    res_ia = res_a + ia
+
+    # Feed-forward layer
+    res_ia_normed = td.pwn(res_ia)
+    pwffn = td.pw(res_ia_normed)
+    pwffn = dropout(pwffn)
+    res_pwffn = res_ia + pwffn
+    res_pwffn
+end
+
+function Base.show(io::IO, td::MusicTransformerDecoder)
+    hs = div(size(td.imh.iqproj.W)[1], td.imh.head)
+    h, ps = size(td.pw.dout.W)
+
+    print(io, "MusicTransformerDecoder(")
+    print(io, "head=$(td.mh.head), ")
+    print(io, "head_size=$(hs), ")
+    print(io, "pwffn_size=$(ps), ")
+    print(io, "size=$(h)")
+    if Flux.istraining()
+        print(io, ", dropout=$(td.drop.p))")
+    else
+        print(io, ")")
+    end
+end
+
 function PositionEncoding(size::Int, max_len::Int = 2048)
-    # Follows the tensor2tensor implementation - which is used by the unconditional 16L Music Transformer
+    # Follows the tensor2tensor implementation - which is used by the Music Transformer
     num_timescales = size / 2
     positions = Float32.(collect(0.0:max_len-1))
     log_timescale_increment = log(1e4) / (num_timescales-1)
@@ -278,18 +363,28 @@ end
 
 @functor TransformerRelative
 
-function TransformerRelative(size::Int, head::Int, ps::Int, max_relative_position::Int; future::Bool = true, act = relu, pdrop = 0.1)
+"""
+
+"""
+function TransformerRelative(size::Int, head::Int, ps::Int, max_relative_position::Int;
+                            future::Bool = true, act = relu, pdrop = 0.1)
+
     rem(size, head) != 0 && error("size not divisible by head")
-    TransformerRelative(size, head, div(size, head), ps, max_relative_position; future=future, act=act, pdrop=pdrop)
+    TransformerRelative(size, head, div(size, head), ps, max_relative_position;
+                        future=future, act=act, pdrop=pdrop)
 end
 
-TransformerRelative(size::Int, head::Int, hs::Int, ps::Int, max_relative_position::Int; future::Bool = true, act = relu, pdrop = 0.1) = TransformerRelative(
-    MultiheadRelativeAttention(head, size, hs, size, max_relative_position; future=future, pdrop=pdrop),
-    LayerNorm(size),
-    PwFFN(size, ps, act),
-    LayerNorm(size),
-    Dropout(pdrop),
-)
+function TransformerRelative(size::Int, head::Int, hs::Int, ps::Int, max_relative_position::Int;
+                             future::Bool = true, act = relu, pdrop = 0.1)
+
+    TransformerRelative(
+        MultiheadRelativeAttention(head, size, hs, size, max_relative_position; future=future, pdrop=pdrop),
+        LayerNorm(size),
+        PwFFN(size, ps, act),
+        LayerNorm(size),
+        Dropout(pdrop),
+    )
+end
 
 function (t::TransformerRelative)(x::A, mask=nothing) where {T, N, A<:AbstractArray{T, N}}
     dropout = t.drop
