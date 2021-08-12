@@ -1,4 +1,4 @@
-export BaselineMusicTransformer
+export UnconditionalMusicTransformer
 
 using Flux: unsqueeze, @functor
 using MacroTools: @forward
@@ -8,21 +8,21 @@ using Transformers.Stacks
 
 abstract type MusicTransformerModel <: AbstractTransformer end
 
-struct BaselineMusicTransformer{T<:Stack} <: MusicTransformerModel
+struct UnconditionalMusicTransformer{T<:Stack} <: MusicTransformerModel
     ts::T
 end
 
-@functor BaselineMusicTransformer
+@functor UnconditionalMusicTransformer
 
-@forward BaselineMusicTransformer.ts Base.getindex, Base.length
+@forward UnconditionalMusicTransformer.ts Base.getindex, Base.length
 
-function BaselineMusicTransformer(size::Int, heads::Int, ps::Int, layers::Int)
+function UnconditionalMusicTransformer(size::Int, heads::Int, ps::Int, layers::Int)
     rem(size, heads) != 0 && error("size not divisible by heads")
-    BaselineMusicTransformer(size, heads, div(size, heads), ps, layers)
+    UnconditionalMusicTransformer(size, heads, div(size, heads), ps, layers)
 end
 
-function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers::Int)
-    BaselineMusicTransformer(
+function UnconditionalMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers::Int)
+    UnconditionalMusicTransformer(
         Stack(
             @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers => norm => logits"),
             Embed(size, 310, scale=sqrt(size)),
@@ -39,16 +39,16 @@ function BaselineMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers
     )
 end
 
-function (mt::BaselineMusicTransformer)(embeds::T) where T
-    mt.ts(embeds)
+function (mt::UnconditionalMusicTransformer)(indices::T) where T
+    mt.ts(indices)
 end
 
-function Base.show(io::IO, mt::BaselineMusicTransformer)
+function Base.show(io::IO, mt::UnconditionalMusicTransformer)
     layer_1 = 3 + 1 # index of layer 1 is after the first 3 embedding layers
     hs = div(size(mt.ts[layer_1].mh.iqproj.W)[1], mt.ts[layer_1].mh.head)
     h, ps = size(mt.ts[layer_1].pw.dout.W)
     num_layers = length(mt.ts) - 3 - 2 # Ignore embedding and output layers
-    print(io, "BaselineMusicTransformer(")
+    print(io, "UnconditionalMusicTransformer(")
     print(io, "layers=$num_layers, ")
     print(io, "head=$(mt.ts[layer_1].mh.head), ")
     print(io, "head_size=$(hs), ")
