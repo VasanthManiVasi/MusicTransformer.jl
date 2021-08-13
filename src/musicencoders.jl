@@ -1,8 +1,8 @@
-export MidiPerformanceEncoder
+export MidiPerformanceEncoder, TextMelodyEncoder
 export encode_notesequence, decode_to_notesequence
 
 using NoteSequences
-using NoteSequences.PerformanceRepr
+using NoteSequences.PerformanceRepr, NoteSequences.MelodyRepr
 import NoteSequences: encodeindex, decodeindex
 
 const PAD_TOKEN = 1
@@ -101,4 +101,69 @@ Decode a one-hot index into it's `PerformanceEvent` using a `MidiPerformanceEnco
 function decodeindex(index::Int, encoder::MidiPerformanceEncoder)
     index -= encoder.num_reserved_tokens
     decodeindex(index, encoder.encoding)
+end
+
+"""
+    TextMelodyEncoder <: Any
+
+Encoder to convert `Melody` events and `NoteSequences`
+to `Melody` one-hot indices.
+
+`TextMelodyEncoder` accounts for padding and EOS tokens, while
+`MelodyOneHotEncoding` does not.
+
+## Fields
+* `encoding::MelodyOneHotEncoding`: The `Melody` encoder object used for encoding.
+* `steps_per_second::Int`: Quantization steps per second.
+"""
+struct TextMelodyEncoder
+    encoding::MelodyOneHotEncoding
+    steps_per_second::Int
+
+    function TextMelodyEncoder(minpitch::Int, maxpitch::Int, steps_per_second::Int)
+        encoding = MelodyOneHotEncoding(minpitch, maxpitch)
+        new(encoding, steps_per_second)
+    end
+end
+
+function Base.getproperty(encoder::TextMelodyEncoder, sym::Symbol)
+    if sym === :num_reserved_tokens
+        return 2 # PAD, EOS
+    elseif sym === :vocab_size
+        return encoder.encoding.num_classes + encoder.num_reserved_tokens
+    elseif sym === :default_event
+        return encoder.encoding.defaultevent
+    else
+        getfield(encoder, sym)
+    end
+end
+
+"""
+    encode_notesequence(ns::NoteSequence, encoder::TextMelodyEncoder)
+
+Convert the given `NoteSequence` into melody event indices.
+"""
+function encode_notesequence(ns::NoteSequence, encoder::TextMelodyEncoder)
+    !ns.isquantized && NoteSequences.absolutequantize!(ns, encoder.steps_per_second)
+    melody = fill(NoteSequences.MelodyRepr.MELODY_NO_EVENT, ns.total_time)
+    sort!(ns.notes, by=note->note.start_time)
+
+    for note in ns.notes
+        melody[note.start_time + 1] = note.pitch
+        if note.end_time < ns.total_time
+            melody[note.end_time] = NoteSequences.MelodyRepr.MELODY_NOTE_OFF
+        end
+    end
+
+    [encodeindex(event, encoder) for event in melody]
+end
+
+"""
+    encodeindex(event::Int, encoder::TextMelodyEncoder)
+
+Encode a `Melody` event into it's one-hot index using a `TextMelodyEncoder`.
+"""
+function encodeindex(event::Int, encoder::TextMelodyEncoder)
+    index = encodeindex(event, encoder.encoding)
+    index + encoder.num_reserved_tokens
 end
