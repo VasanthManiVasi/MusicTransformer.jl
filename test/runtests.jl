@@ -1,6 +1,5 @@
 using MusicTransformer
+using NoteSequences
 using Test
 
-@testset "MusicTransformer.jl" begin
-    # Write your tests here.
-end
+include("musicencoders.jl")
