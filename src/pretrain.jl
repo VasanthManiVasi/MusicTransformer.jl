@@ -93,6 +93,7 @@ function load_pretrain(model_name::String)
 end
 
 loading_method(::Val{:unconditional}) = load_unconditional_musictransformer
+loading_method(::Val{:melodyconditioned}) = load_melodyconditioned_musictransformer
 
 # Macro from Transformers.jl
 macro pretrain_str(name)
@@ -212,5 +213,34 @@ function load_unconditional_musictransformer(weights, config)
     last_layer = 3 + num_layers + 1 + 1
     loadparams!(mt.ts[last_layer].W, [embedding'])
 
+    mt
+end
+
+function load_melodyconditioned_musictransformer(weights, config)
+    num_layers = config["num_layers"]
+    heads = config["heads"]
+    depth = config["depth"]
+    ffn_depth = config["ffn_depth"]
+
+    mt = MelodyConditionedMusicTransformer(depth, heads, ffn_depth, num_layers, num_layers)
+    encoder_weights = filter(kv -> occursin("encoder", kv.first), weights)
+    load_transformer_encoder!(mt.encoder, encoder_weights, num_layers)
+    decoder_weights = filter(kv -> occursin("decoder", kv.first), weights)
+    load_transformer_decoder!(mt.decoder, decoder_weights, num_layers)
+
+    # Load embeddings
+    input_embedding = weights["transformer/symbol_modality_92_512/input_emb/weights_0"]
+    loadparams!(mt.encoder_embedding[1], [input_embedding])
+
+    target_space_embedding = weights["transformer/body/target_space_embedding/kernel"]
+    loadparams!(mt.encoder_embedding[2], [target_space_embedding])
+
+    target_embedding = weights["transformer/symbol_modality_310_512/target_emb/weights_0"]
+    loadparams!(mt.decoder_embedding[1], [target_embedding])
+
+    softmax_embedding = weights["transformer/symbol_modality_310_512/softmax/weights_0"]
+    # $num_layers transformer body blocks, 1 postprocess layernorm, + 1 is the last embedding layer
+    last_layer = num_layers + 1 + 1
+    loadparams!(mt.decoder[last_layer], [softmax_embedding'])
     mt
 end
