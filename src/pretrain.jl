@@ -5,7 +5,9 @@ export list_pretrains, load_pretrain, @pretrain_str
 
 const configs = open(TOML.parse, joinpath(@__DIR__, "pretrains.toml"))
 
-"""     readckpt(path)
+"""
+    readckpt(path)
+
 Load weights from a tensorflow checkpoint file into a Dict.
 """
 readckpt(path) = error("readckpt require TensorFlow.jl installed. run `Pkg.add(\"TensorFlow\"); using TensorFlow`")
@@ -33,7 +35,9 @@ readckpt(path) = error("readckpt require TensorFlow.jl installed. run `Pkg.add(\
     end
 end
 
-"""     ckpt2_to_jld2(ckptpath::String, ckptname::String, savepath::String)
+"""
+    ckpt2_to_jld2(ckptpath::String, ckptname::String, savepath::String)
+
 Loads the pre-trained model weights from a TensorFlow checkpoint and saves to JLD2
 """
 function ckpt_to_jld2(ckptpath::String, ckptname::String; savepath::String="./")
@@ -54,7 +58,9 @@ function register_configs(configs)
     end
 end
 
-"""     list_pretrains()
+"""
+    list_pretrains()
+
 List all the available pre-trained models.
 """
 function list_pretrains()
@@ -62,7 +68,9 @@ function list_pretrains()
     return
 end
 
-"""     load_pretrain(path)
+"""
+    load_pretrain(path)
+
 Loads a pre-trained Music Transformer model.
 """
 function load_pretrain(model_name::String)
@@ -91,51 +99,41 @@ macro pretrain_str(name)
     :(load_pretrain($(esc(name))))
 end
 
-function load_unconditional_musictransformer(weights, config)
-    num_layers = config["num_layers"]
-    heads = config["heads"]
-    depth = config["depth"]
-    ffn_depth = config["ffn_depth"]
-
-    mt = BaselineMusicTransformer(depth, heads, ffn_depth, num_layers)
-
+function load_transformer_encoder!(model, weights, num_layers::Int)
     layers = keys(weights)
-
     for i = 1:num_layers
         # Get all layers in a block
         block = filter(l->occursin("layer_$(i-1)/", l), layers)
-        # Index of the block in Transformer body - after the embedding layers
-        block_index = i + 3
         for k ∈ block
             if occursin("self_attention", k)
                 if occursin("q/kernel", k)
-                    loadparams!(mt[block_index].mh.iqproj.W, [weights[k]])
+                    loadparams!(model[i].mh.iqproj.W, [weights[k]])
                 elseif occursin("k/kernel", k)
-                    loadparams!(mt[block_index].mh.ikproj.W, [weights[k]])
+                    loadparams!(model[i].mh.ikproj.W, [weights[k]])
                 elseif occursin("v/kernel", k)
-                    loadparams!(mt[block_index].mh.ivproj.W, [weights[k]])
+                    loadparams!(model[i].mh.ivproj.W, [weights[k]])
                 elseif occursin("output_transform/kernel", k)
-                    loadparams!(mt[block_index].mh.oproj.W, [weights[k]])
+                    loadparams!(model[i].mh.oproj.W, [weights[k]])
                 elseif occursin("layer_norm_scale", k)
-                    loadparams!(mt[block_index].mhn.diag.α, [weights[k]])
+                    loadparams!(model[i].mhn.diag.α, [weights[k]])
                 elseif occursin("layer_norm_bias", k)
-                    loadparams!(mt[block_index].mhn.diag.β, [weights[k]])
+                    loadparams!(model[i].mhn.diag.β, [weights[k]])
                 else
                     @warn "Unknown variable: $k"
                 end
             elseif occursin("ffn", k)
                 if occursin("conv1/kernel", k)
-                    loadparams!(mt[block_index].pw.din.W, [weights[k]])
+                    loadparams!(model[i].pw.din.W, [weights[k]])
                 elseif occursin("conv1/bias", k)
-                    loadparams!(mt[block_index].pw.din.b, [weights[k]])
+                    loadparams!(model[i].pw.din.b, [weights[k]])
                 elseif occursin("conv2/kernel", k)
-                    loadparams!(mt[block_index].pw.dout.W, [weights[k]])
+                    loadparams!(model[i].pw.dout.W, [weights[k]])
                 elseif occursin("conv2/bias", k)
-                    loadparams!(mt[block_index].pw.dout.b, [weights[k]])
+                    loadparams!(model[i].pw.dout.b, [weights[k]])
                 elseif occursin("layer_norm_scale", k)
-                    loadparams!(mt[block_index].pwn.diag.α, [weights[k]])
+                    loadparams!(model[i].pwn.diag.α, [weights[k]])
                 elseif occursin("layer_norm_bias", k)
-                    loadparams!(mt[block_index].pwn.diag.β, [weights[k]])
+                    loadparams!(model[i].pwn.diag.β, [weights[k]])
                 else
                     @warn "Unknown variable: $k"
                 end
@@ -145,22 +143,71 @@ function load_unconditional_musictransformer(weights, config)
         end
     end
 
-    output_norm = filter(l->occursin("transformer/body/decoder/layer_prepostprocess/layer_norm", l), layers)
-    block_index = 3 + num_layers + 1
+    # Captures both encoder/layer_prepostprocess and decoder/layer_prepostprocess
+    output_norm = filter(l->occursin("coder/layer_prepostprocess/layer_norm", l), layers)
+    block_index = num_layers + 1
     for k ∈ output_norm
         if occursin("layer_norm_scale", k)
-            loadparams!(mt[block_index].diag.α, [weights[k]])
+            loadparams!(model[block_index].diag.α, [weights[k]])
         elseif occursin("layer_norm_bias", k)
-            loadparams!(mt[block_index].diag.β, [weights[k]])
+            loadparams!(model[block_index].diag.β, [weights[k]])
         end
     end
+end
+
+function load_transformer_decoder!(model, weights, num_layers::Int)
+    # Except for the encoder-decoder attention layer in the decoder,
+    # the rest of the layers are similar for both the encoder and decoder
+    # So we load the rest of the layers using the load_transformer_encoder
+    layers = filter(kv -> !occursin("encdec_attention", kv.first), weights)
+    load_transformer_encoder!(model, layers, num_layers)
+
+    # Load the encdec_attention layer
+    layers = keys(weights)
+    for i = 1:num_layers
+        # Get all layers in a block
+        block = filter(l->occursin("layer_$(i-1)/", l), layers)
+        for k ∈ block
+            if occursin("encdec_attention", k)
+                if occursin("q/kernel", k)
+                    loadparams!(model[i].mh.iqproj.W, [weights[k]])
+                elseif occursin("k/kernel", k)
+                    loadparams!(model[i].mh.ikproj.W, [weights[k]])
+                elseif occursin("v/kernel", k)
+                    loadparams!(model[i].mh.ivproj.W, [weights[k]])
+                elseif occursin("output_transform/kernel", k)
+                    loadparams!(model[i].mh.oproj.W, [weights[k]])
+                elseif occursin("layer_norm_scale", k)
+                    loadparams!(model[i].mhn.diag.α, [weights[k]])
+                elseif occursin("layer_norm_bias", k)
+                    loadparams!(model[i].mhn.diag.β, [weights[k]])
+                else
+                    @warn "Unknown variable: $k"
+                end
+            end
+        end
+    end
+end
+
+function load_unconditional_musictransformer(weights, config)
+    num_layers = config["num_layers"]
+    heads = config["heads"]
+    depth = config["depth"]
+    ffn_depth = config["ffn_depth"]
+    encoder_begin = 3 + 1
+    encoder_end = 3 + num_layers + 1
+
+    mt = UnconditionalMusicTransformer(depth, heads, ffn_depth, num_layers)
+
+    # Load encoder layers
+    load_transformer_encoder!(mt[encoder_begin:encoder_end], weights, num_layers)
 
     # Load embedding
     embedding = weights["transformer/symbol_modality_310_512/shared/weights_0"]
     loadparams!(mt.ts[1], [embedding])
 
-    # This pre-trained Music Transformer shares embedding and softmax weights
-    # Base.lastindex is not defined on Stack, manually write the last index for now
+    # This model shares embedding and softmax weights
+    # TODO: use Base.lastindex once it's defined for Stack
     # 3 embedding layers, 16 transformer body blocks, 1 output layer norm, + 1 is the last embedding layer
     last_layer = 3 + num_layers + 1 + 1
     loadparams!(mt.ts[last_layer].W, [embedding'])
