@@ -1,12 +1,25 @@
 [unconditional_model_16]
 host = "Google"
-description = "Music Transformer with self-attention"
+description = "Music Transformer with self-attention."
 link = "https://github.com/magenta/magenta/tree/main/magenta/models/score2perf"
 num_layers = 16
 heads = 8
 depth = 512
 ffn_depth = 2048
 model_type = "unconditional"
-name = "Baseline Music Transformer"
+name = "Unconditional Music Transformer"
 url = "https://docs.google.com/uc?id=1ErVsPpndLL45b3RHbC4RFQYkG4zu-vih&export=download"
 checksum = "d9d39efb9ba7b07ecd7e1eeebe605c905739664eb5ee9a7b6c5b3981139722fe"
+
+[melody_conditioned_model_16]
+host = "Google"
+description = "Melody Conditioned Music Transformer with self-attention."
+link = "https://github.com/magenta/magenta/tree/main/magenta/models/score2perf"
+num_layers = 16
+heads = 8
+depth = 512
+ffn_depth = 2048
+model_type = "melodyconditioned"
+name = "Melody Conditioned Music Transformer"
+url = "https://docs.google.com/uc?id=1b4W_vU3BM0PaeNHGqMQizLFWqTxXhGQw&export=download"
+checksum = "377b17f31360dbfa44395d621fee2533a3b9912573b3428c5dd1d6e8518d7cce"
