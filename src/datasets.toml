@@ -1,0 +1,9 @@
+[Maestro_Raw]
+description = "Maestro Dataset - Google"
+url = "https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0-midi.zip"
+checksum = "70470ee253295c8d2c71e6d9d4a815189e35c89624b76d22fce5a019d5dde12c"
+
+[Maestro_LM]
+description = "Maestro dataset processed for unconditional language modeling. ~5GB"
+url = "https://docs.google.com/uc?id=1tRzK9ir9B73dwLnl69FRI803kX_J8H3v&export=download"
+checksum = "6607164c35c2d728edd8503620fc8b82d0192a7f1f49fc81928294d94d0f8046"

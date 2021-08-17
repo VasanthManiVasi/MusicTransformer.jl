@@ -3,7 +3,7 @@ using Flux: loadparams!
 
 export list_pretrains, load_pretrain, @pretrain_str
 
-const configs = open(TOML.parse, joinpath(@__DIR__, "pretrains.toml"))
+const pretrain_configs = open(TOML.parse, joinpath(@__DIR__, "pretrains.toml"))
 
 """
     readckpt(path)
@@ -64,7 +64,7 @@ end
 List all the available pre-trained models.
 """
 function list_pretrains()
-    println.(keys(configs))
+    println.(keys(pretrain_configs))
     return
 end
 
@@ -74,12 +74,12 @@ end
 Loads a pre-trained Music Transformer model.
 """
 function load_pretrain(model_name::String)
-    if model_name ∉ keys(configs)
+    if model_name ∉ keys(pretrain_configs)
         error("""Invalid model.
                Please try list_pretrains() to check the available pre-trained models""")
     end
 
-    model_config = configs[model_name]
+    model_config = pretrain_configs[model_name]
     loader = loading_method(Val(Symbol(model_config["model_type"])))
 
     model_path = @datadep_str("$model_name/$model_name.jld2")

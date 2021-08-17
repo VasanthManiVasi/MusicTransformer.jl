@@ -8,7 +8,13 @@ include("models.jl")
 include("musicencoders.jl")
 include("generate.jl")
 include("pretrain.jl")
+include("datasets.jl")
 
-@init register_configs(configs)
+function call_registers()
+    register_configs(pretrain_configs)
+    register_datasets(dataset_configs)
+end
+
+@init call_registers()
 
 end
