@@ -1,3 +1,7 @@
+"""
+Example for training on the maestro dataset for language modeling.
+"""
+
 using Flux
 using Flux: onehotbatch, label_smoothing, update!
 using Zygote
@@ -9,34 +13,8 @@ using JLD2
 
 using MusicTransformer
 using Transformers
-using Transformers.Basic, Transformers.Datasets
-import Transformers.Datasets: dataset, datafile, reader, Mode
-
-struct MaestroDataset <: Dataset end
-
-Transformers.Datasets.testfile(::MaestroDataset) = "/home/user/Downloads/maestro_test.jld2"
-Transformers.Datasets.trainfile(::MaestroDataset) = "/home/user/Downloads/maestro_train.jld2"
-Transformers.Datasets.devfile(::MaestroDataset) = "/home/user/Downloads/maestro_validation.jld2"
-
-function reader(::Type{M}, ds::MaestroDataset; batchsize=32, shuffle=false) where {M <: Mode}
-    @assert batchsize >= 1
-
-    chan = Channel{Vector{Vector{Int}}}()
-    filename = datafile(M, ds)
-    num_examples = load(filename, "num_examples")
-    load_order = shuffle ? randperm(num_examples) : collect(1:num_examples)
-
-    loader = @async begin
-        for batch_load_order in Iterators.partition(load_order, batchsize)
-            length(batch_load_order) != batchsize && continue
-            data = collect(load(filename, string.(batch_load_order)...))
-            put!(chan, ifelse(batchsize == 1, [data], data))
-        end
-    end
-
-    bind(chan, loader)
-    chan
-end
+using Transformers.Basic
+using Transformers.Datasets
 
 Base.@kwdef struct HParams
     num_classes::Int=310
@@ -61,7 +39,7 @@ Label smoothing is applied to the targets.
 """
 function preprocess(data::Vector{Vector{Int}},
                     crop_len::Int=2048,
-                    num_classes::Int=1,
+                    num_classes::Int=310,
                     α::Float64=0.1)
 
     batchsize = length(data)
@@ -78,7 +56,7 @@ function preprocess(data::Vector{Vector{Int}},
     # Shift inputs right and one-hot encode them
     Y = onehotbatch(batch[:, 2:end], 1:num_classes)
 
-    X, label_smoothing(Y, α)
+    X, Float32.(label_smoothing(Y, α))
 end
 
 """

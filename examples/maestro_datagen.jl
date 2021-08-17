@@ -186,5 +186,6 @@ function save_examples(examples::Vector{Vector{Int}}, output_dir::String, mode::
     end
 end
 
-# data_dir = "/home/user/Downloads/midis/maestro-v3.0.0/"
+# Usage:
+# data_dir = dataset"Maestro_Raw/maestro-v3.0.0"
 # generate_examples(data_dir, "/tmp/maestro_data")
