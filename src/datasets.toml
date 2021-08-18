@@ -7,3 +7,8 @@ checksum = "70470ee253295c8d2c71e6d9d4a815189e35c89624b76d22fce5a019d5dde12c"
 description = "Maestro dataset processed for unconditional language modeling. ~5GB"
 url = "https://docs.google.com/uc?id=1tRzK9ir9B73dwLnl69FRI803kX_J8H3v&export=download"
 checksum = "6607164c35c2d728edd8503620fc8b82d0192a7f1f49fc81928294d94d0f8046"
+
+[LakhMIDI_Raw]
+description = "LakhMIDI Dataset - Colin Raffel"
+url = "http://hog.ee.columbia.edu/craffel/lmd/clean_midi.tar.gz"
+checksum = "de1bb64cbc0cf35545a05b5c3e786aa6890cfa144edffc4b827ff41bf8c33dc5"
