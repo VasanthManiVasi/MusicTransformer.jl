@@ -18,6 +18,7 @@ Transformers = "21ca0261-441d-5938-ace7-c90938fde4d4"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 
 [compat]
+DataDeps = "0.7"
 julia = "1"
 
 [extras]
