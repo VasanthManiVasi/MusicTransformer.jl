@@ -57,7 +57,7 @@ function sample!(performance::Performance,
     push!(targets, prediction)
 
     # Add predicted event to performance
-    push!(performance, decodeindex(prediction, encoder))
+    push!(performance, decode_event(prediction, encoder))
 
     prediction
 end
@@ -77,7 +77,7 @@ function generate_events!(model::UnconditionalMusicTransformer,
                           encoder::MidiPerformanceEncoder,
                           numsteps::Int)
 
-    targets = map(event -> encodeindex(event, encoder), performance)
+    targets = map(event -> encode_event(event, encoder), performance)
 
     logits = model(targets)
     pred = sample!(performance, targets, logits, encoder)
@@ -122,7 +122,7 @@ function generate(model::UnconditionalMusicTransformer;
 
     ns = getnotesequence(performance)
     as_notesequence == true && return ns
-    notesequence_to_midi(ns)
+    midifile(ns)
 end
 
 """
@@ -149,7 +149,7 @@ function generate_accompaniment(model::MelodyConditionedMusicTransformer,
         throw(error("Melody must not be empty"))
     end
 
-    targets = [encodeindex(target_encoder.default_event, target_encoder)]
+    targets = [encode_event(target_encoder.default_event, target_encoder)]
 
     @info "Generating..."
     performance = Performance(DEFAULT_STEPS_PER_SECOND, velocity_bins=32)
@@ -165,5 +165,5 @@ function generate_accompaniment(model::MelodyConditionedMusicTransformer,
 
     ns = getnotesequence(performance)
     as_notesequence == true && return ns
-    notesequence_to_midi(ns)
+    midifile(ns)
 end

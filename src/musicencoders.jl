@@ -3,7 +3,7 @@ export encode_notesequence, decode_to_notesequence
 
 using NoteSequences
 using NoteSequences.PerformanceRepr, NoteSequences.MelodyRepr
-import NoteSequences: encodeindex, decodeindex
+import NoteSequences: encode_event, decode_event
 
 const PAD_TOKEN = 1
 const EOS_TOKEN = 2
@@ -64,7 +64,7 @@ If `encoder.add_eos` is true, `EOS_TOKEN` will be added at the end.
 function encode_notesequence(ns::NoteSequence, encoder::MidiPerformanceEncoder)
     NoteSequences.absolutequantize!(ns, encoder.steps_per_second)
     performance = Performance(ns, velocity_bins=encoder.num_velocitybins)
-    indices = [encodeindex(event, encoder) for event in performance]
+    indices = [encode_event(event, encoder) for event in performance]
     encoder.add_eos && push!(indices, EOS_TOKEN)
 
     indices
@@ -77,30 +77,30 @@ Convert the given performance event indices into a `NoteSequence`.
 """
 function decode_to_notesequence(indices::Vector{Int}, encoder::MidiPerformanceEncoder)
     performance = Performance(encoder.steps_per_second, velocity_bins=encoder.num_velocitybins)
-    performance_events = [decodeindex(index, encoder) for index in indices]
+    performance_events = [decode_event(index, encoder) for index in indices]
     append!(performance, performance_events)
 
     getnotesequence(performance)
 end
 
 """
-    encodeindex(event::PerformanceEvent, encoder::MidiPerformanceEncoder)
+    encode_event(event::PerformanceEvent, encoder::MidiPerformanceEncoder)
 
 Encode a `PerformanceEvent` into it's one-hot index using a `MidiPerformanceEncoder`.
 """
-function encodeindex(event::PerformanceEvent, encoder::MidiPerformanceEncoder)
-    index = encodeindex(event, encoder.encoding)
+function encode_event(event::PerformanceEvent, encoder::MidiPerformanceEncoder)
+    index = encode_event(event, encoder.encoding)
     index + encoder.num_reserved_tokens
 end
 
 """
-    decodeindex(index::Int, encoder::MidiPerformanceEncoder)
+    decode_event(index::Int, encoder::MidiPerformanceEncoder)
 
 Decode a one-hot index into it's `PerformanceEvent` using a `MidiPerformanceEncoder`.
 """
-function decodeindex(index::Int, encoder::MidiPerformanceEncoder)
+function decode_event(index::Int, encoder::MidiPerformanceEncoder)
     index -= encoder.num_reserved_tokens
-    decodeindex(index, encoder.encoding)
+    decode_event(index, encoder.encoding)
 end
 
 """
@@ -155,15 +155,15 @@ function encode_notesequence(ns::NoteSequence, encoder::TextMelodyEncoder)
         end
     end
 
-    [encodeindex(event, encoder) for event in melody]
+    [encode_event(event, encoder) for event in melody]
 end
 
 """
-    encodeindex(event::Int, encoder::TextMelodyEncoder)
+    encode_event(event::Int, encoder::TextMelodyEncoder)
 
 Encode a `Melody` event into it's one-hot index using a `TextMelodyEncoder`.
 """
-function encodeindex(event::Int, encoder::TextMelodyEncoder)
-    index = encodeindex(event, encoder.encoding)
+function encode_event(event::Int, encoder::TextMelodyEncoder)
+    index = encode_event(event, encoder.encoding)
     index + encoder.num_reserved_tokens
 end

@@ -11,7 +11,7 @@ include("pretrain.jl")
 include("datasets.jl")
 
 function call_registers()
-    register_configs(pretrain_configs)
+    register_configs(pretrained_configs)
     register_datasets(dataset_configs)
 end
 

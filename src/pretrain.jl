@@ -1,9 +1,9 @@
 using JLD2, Requires, Pkg.TOML, DataDeps
 using Flux: loadparams!
 
-export list_pretrains, load_pretrain, @pretrain_str
+export list_pretrains, load_pretrained, @pretrained_str
 
-const pretrain_configs = open(TOML.parse, joinpath(@__DIR__, "pretrains.toml"))
+const pretrained_configs = open(TOML.parse, joinpath(@__DIR__, "pretrains.toml"))
 
 """
     readckpt(path)
@@ -64,22 +64,22 @@ end
 List all the available pre-trained models.
 """
 function list_pretrains()
-    println.(keys(pretrain_configs))
+    println.(keys(pretrained_configs))
     return
 end
 
 """
-    load_pretrain(path)
+    load_pretrained(path)
 
 Loads a pre-trained Music Transformer model.
 """
-function load_pretrain(model_name::String)
-    if model_name ∉ keys(pretrain_configs)
+function load_pretrained(model_name::String)
+    if model_name ∉ keys(pretrained_configs)
         error("""Invalid model.
                Please try list_pretrains() to check the available pre-trained models""")
     end
 
-    model_config = pretrain_configs[model_name]
+    model_config = pretrained_configs[model_name]
     loader = loading_method(Val(Symbol(model_config["model_type"])))
 
     model_path = @datadep_str("$model_name/$model_name.jld2")
@@ -96,8 +96,8 @@ loading_method(::Val{:unconditional}) = load_unconditional_musictransformer
 loading_method(::Val{:melodyconditioned}) = load_melodyconditioned_musictransformer
 
 # Macro from Transformers.jl
-macro pretrain_str(name)
-    :(load_pretrain($(esc(name))))
+macro pretrained_str(name)
+    :(load_pretrained($(esc(name))))
 end
 
 function load_transformer_encoder!(model, weights, num_layers::Int)
