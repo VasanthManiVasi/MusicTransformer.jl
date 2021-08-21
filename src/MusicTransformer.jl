@@ -1,5 +1,6 @@
 module MusicTransformer
 
+using CUDA
 using Flux
 using Transformers
 
@@ -9,6 +10,14 @@ include("musicencoders.jl")
 include("generate.jl")
 include("pretrain.jl")
 include("datasets.jl")
+
+device = Flux.cpu
+
+if CUDA.has_cuda()
+    device = Flux.gpu
+    println("GPU is enabled.")
+    CUDA.allowscalar(false)
+end
 
 function call_registers()
     register_configs(pretrained_configs)
