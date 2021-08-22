@@ -171,17 +171,17 @@ function load_transformer_decoder!(model, weights, num_layers::Int)
         for k ∈ block
             if occursin("encdec_attention", k)
                 if occursin("q/kernel", k)
-                    loadparams!(model[i].mh.iqproj.W, [weights[k]])
+                    loadparams!(model[i].imh.iqproj.W, [weights[k]])
                 elseif occursin("k/kernel", k)
-                    loadparams!(model[i].mh.ikproj.W, [weights[k]])
+                    loadparams!(model[i].imh.ikproj.W, [weights[k]])
                 elseif occursin("v/kernel", k)
-                    loadparams!(model[i].mh.ivproj.W, [weights[k]])
+                    loadparams!(model[i].imh.ivproj.W, [weights[k]])
                 elseif occursin("output_transform/kernel", k)
-                    loadparams!(model[i].mh.oproj.W, [weights[k]])
+                    loadparams!(model[i].imh.oproj.W, [weights[k]])
                 elseif occursin("layer_norm_scale", k)
-                    loadparams!(model[i].mhn.diag.α, [weights[k]])
+                    loadparams!(model[i].imhn.diag.α, [weights[k]])
                 elseif occursin("layer_norm_bias", k)
-                    loadparams!(model[i].mhn.diag.β, [weights[k]])
+                    loadparams!(model[i].imhn.diag.β, [weights[k]])
                 else
                     @warn "Unknown variable: $k"
                 end
@@ -195,23 +195,21 @@ function load_unconditional_musictransformer(weights, config)
     heads = config["heads"]
     depth = config["depth"]
     ffn_depth = config["ffn_depth"]
-    encoder_begin = 3 + 1
-    encoder_end = 3 + num_layers + 1
 
     mt = UnconditionalMusicTransformer(depth, heads, ffn_depth, num_layers)
 
     # Load encoder layers
-    load_transformer_encoder!(mt[encoder_begin:encoder_end], weights, num_layers)
+    load_transformer_encoder!(mt.body, weights, num_layers)
 
     # Load embedding
     embedding = weights["transformer/symbol_modality_310_512/shared/weights_0"]
-    loadparams!(mt.ts[1], [embedding])
+    loadparams!(mt.embedding[1], [embedding])
 
     # This model shares embedding and softmax weights
     # TODO: use Base.lastindex once it's defined for Stack
-    # 3 embedding layers, 16 transformer body blocks, 1 output layer norm, + 1 is the last embedding layer
-    last_layer = 3 + num_layers + 1 + 1
-    loadparams!(mt.ts[last_layer].W, [embedding'])
+    # 16 transformer body blocks, 1 output layer norm, + 1 is the last embedding-softmax layer
+    last_layer = num_layers + 1 + 1
+    loadparams!(mt.body[last_layer].W, [embedding'])
 
     mt
 end

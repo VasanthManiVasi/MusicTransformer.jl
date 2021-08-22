@@ -8,13 +8,12 @@ using Transformers.Stacks
 
 abstract type MusicTransformerModel <: AbstractTransformer end
 
-struct UnconditionalMusicTransformer{T<:Stack} <: MusicTransformerModel
-    ts::T
+struct UnconditionalMusicTransformer{E<:Stack, B<:Stack} <: MusicTransformerModel
+    embedding::E
+    body::B
 end
 
 @functor UnconditionalMusicTransformer
-
-@forward UnconditionalMusicTransformer.ts Base.getindex, Base.length
 
 function UnconditionalMusicTransformer(size::Int, heads::Int, ps::Int, layers::Int)
     rem(size, heads) != 0 && error("size not divisible by heads")
@@ -24,11 +23,14 @@ end
 function UnconditionalMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, layers::Int)
     UnconditionalMusicTransformer(
         Stack(
-            @nntopo_str("indices => e:e => pe:(e, pe) => input => $layers => norm => logits"),
+            @nntopo_str("indices => e => pe:(e, pe) => input"),
             Embed(size, 310, scale=sqrt(size)),
             PositionEncoding(size, 4096),
             # Perform bottom transformation and add position embedding
             (e, pe) -> (e .+ pe),
+        ),
+        Stack(
+            @nntopo_str("input => $layers => norm => logits"),
             [
                 MusicTransformerBlock(size, head, hs, ps; future=false, pdrop=0)
                 for i = 1:layers
@@ -39,18 +41,29 @@ function UnconditionalMusicTransformer(size::Int, head::Int, hs::Int, ps::Int, l
     )
 end
 
+function prepare_decoder_inputs(mt::UnconditionalMusicTransformer, indices::T) where T
+    if isempty(indices)
+        vocab_size = size(mt.embedding[1], 1)
+        inputs = zeros(Float32, (vocab_size, 1))
+    else
+        inputs = mt.embedding(indices)
+    end
+
+    inputs
+end
+
 function (mt::UnconditionalMusicTransformer)(indices::T) where T
-    mt.ts(indices)
+    inputs = prepare_decoder_inputs(mt, indices)
+    mt.body(inputs)
 end
 
 function Base.show(io::IO, mt::UnconditionalMusicTransformer)
-    layer_1 = 3 + 1 # index of layer 1 is after the first 3 embedding layers
-    hs = div(size(mt.ts[layer_1].mh.iqproj.W)[1], mt.ts[layer_1].mh.head)
-    h, ps = size(mt.ts[layer_1].pw.dout.W)
-    num_layers = length(mt.ts) - 3 - 2 # Ignore embedding and output layers
+    hs = div(size(mt.body[1].mh.iqproj.W)[1], mt.body[1].mh.head)
+    h, ps = size(mt.body[1].pw.dout.W)
+    num_layers = length(mt.body) - 2 # Ignore output norm and softmax layers
     print(io, "UnconditionalMusicTransformer(")
     print(io, "layers=$num_layers, ")
-    print(io, "head=$(mt.ts[layer_1].mh.head), ")
+    print(io, "head=$(mt.body[1].mh.head), ")
     print(io, "head_size=$(hs), ")
     print(io, "pwffn_size=$(ps), ")
     print(io, "size=$(h))")
@@ -65,8 +78,6 @@ end
 
 @functor MelodyConditionedMusicTransformer
 
-@forward MelodyConditionedMusicTransformer.ts Base.getindex, Base.length
-
 function MelodyConditionedMusicTransformer(size::Int, heads::Int, ps::Int,
                                      encoder_layers::Int, decoder_layers::Int)
 
@@ -75,7 +86,7 @@ function MelodyConditionedMusicTransformer(size::Int, heads::Int, ps::Int,
 end
 
 function MelodyConditionedMusicTransformer(size::Int, head::Int, hs::Int, ps::Int,
-                                     encoder_layers::Int, decoder_layers::Int)
+                                           encoder_layers::Int, decoder_layers::Int)
 
     MelodyConditionedMusicTransformer(
         Stack(
@@ -117,14 +128,35 @@ function MelodyConditionedMusicTransformer(size::Int, head::Int, hs::Int, ps::In
     )
 end
 
-function (mt::MelodyConditionedMusicTransformer)(inputs::Vector{Int}, targets::Vector{Int})
+function prepare_decoder_inputs(mt::MelodyConditionedMusicTransformer, targets::Array{Int, N}) where N
+    if isempty(targets)
+        vocab_size = size(mt.decoder_embedding[1], 1)
+        decoder_inputs = zeros(Float32, (vocab_size, 1))
+    else
+        decoder_inputs = mt.decoder_embedding(targets)
+    end
+
+    decoder_inputs
+end
+
+function (mt::MelodyConditionedMusicTransformer)(inputs::Array{Int, N},
+                                                 targets::Array{Int, M}) where {N, M}
     target_space_id = [1]
+    # Call the encoder layers
     encoder_inputs = mt.encoder_embedding(inputs, target_space_id)
     encoder_context = mt.encoder(encoder_inputs)
-    decoder_inputs = mt.decoder_embedding(targets)
-    logits = mt.decoder(decoder_inputs, encoder_context)
+    # Call the decoder layers
+    logits = mt(targets, encoder_context)
 
     logits, encoder_context
+end
+
+function (mt::MelodyConditionedMusicTransformer)(targets::Array{Int, N},
+                                                 encoder_context::Array{Float32, M}) where {N, M}
+
+    decoder_inputs = prepare_decoder_inputs(mt, targets)
+    logits = mt.decoder(decoder_inputs, encoder_context)
+    logits
 end
 
 function Base.show(io::IO, mt::MelodyConditionedMusicTransformer)
